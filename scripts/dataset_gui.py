@@ -19,6 +19,7 @@ from dataset_core import (
     MAX_TAGS_PER_TYPE,
     Query,
     available_options,
+    build_report,
     count_matches,
     load_csv,
     load_dataset,
@@ -53,6 +54,14 @@ HTML = """<!doctype html>
     button.compact { min-height: 28px; padding: 4px 8px; font-size: 12px; }
     .status { color: #4d5868; font-size: 14px; }
     .table-wrap { overflow: auto; background: #fff; border: 1px solid #dfe3ea; border-radius: 8px; }
+    .report { background: #fff; border: 1px solid #dfe3ea; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+    .report h2 { margin: 0 0 12px; font-size: 18px; letter-spacing: 0; }
+    .report-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+    .report-panel { border: 1px solid #edf0f4; border-radius: 6px; padding: 10px; overflow: auto; }
+    .report-panel h3 { margin: 0 0 8px; font-size: 14px; letter-spacing: 0; }
+    .bar-row { display: grid; grid-template-columns: minmax(72px, 1fr) 4fr 46px; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
+    .bar-track { height: 10px; background: #eef2f6; border-radius: 999px; overflow: hidden; }
+    .bar-fill { height: 100%; background: #2f669f; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1120px; }
     th, td { padding: 9px 10px; border-bottom: 1px solid #edf0f4; text-align: left; vertical-align: top; }
     th { background: #f0f3f7; color: #344054; position: sticky; top: 0; }
@@ -88,8 +97,8 @@ HTML = """<!doctype html>
         <thead>
           <tr>
             <th>操作</th><th>帧 ID</th><th>数据段名</th><th>帧号</th><th>样机编号</th>
-            <th>采集版本</th><th>天气</th><th>时段</th><th>视野方向</th>
-            <th>数据路径</th><th>目标 tag</th><th>噪声 tag</th>
+            <th>采集版本</th><th>天气</th><th>时段</th><th>视野方向</th><th>价值评分</th>
+            <th>集合归属</th><th>模型推理情况</th><th>数据路径</th><th>目标 tag</th><th>噪声 tag</th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
@@ -111,6 +120,9 @@ HTML = """<!doctype html>
             <label>天气<select name="weather" required></select></label>
             <label>时段<select name="time_of_day" required></select></label>
             <label>视野方向<select name="view_direction" required></select></label>
+            <label>数据价值评分<select name="value_score" required></select></label>
+            <label>集合归属<select name="dataset_split" required></select></label>
+            <label class="wide">模型推理情况<textarea name="model_inference" placeholder="用户自定义描述"></textarea></label>
             <label class="wide">数据路径<input name="data_path" required></label>
             <label class="wide">目标 tag 描述
               <textarea name="target_tags" placeholder="例如：行人, 车辆, 锥桶"></textarea>
@@ -128,18 +140,49 @@ HTML = """<!doctype html>
         </div>
       </form>
     </dialog>
+    <section class="report">
+      <h2>报表</h2>
+      <div class="actions">
+        <button class="secondary" id="refresh-report">刷新报表</button>
+        <span class="status" id="report-status">等待加载</span>
+      </div>
+      <div class="report-grid">
+        <div class="report-panel">
+          <h3>训练/验证/测试在数据段上的分布</h3>
+          <div class="table-wrap"><table><thead><tr><th>数据段</th><th>训练集</th><th>验证集</th><th>测试集</th><th>总数</th></tr></thead><tbody id="segment-report"></tbody></table></div>
+        </div>
+        <div class="report-panel">
+          <h3>目标 tag 分布</h3>
+          <div id="target-report"></div>
+        </div>
+        <div class="report-panel">
+          <h3>噪声 tag 分布</h3>
+          <div id="noise-report"></div>
+        </div>
+        <div class="report-panel">
+          <h3>数据价值评分分布</h3>
+          <div id="score-report"></div>
+        </div>
+      </div>
+    </section>
   </main>
   <script>
     const filterConfig = [
       ["prototype_id", "样机编号", "select"], ["collection_version", "采集版本", "select"],
       ["weather", "天气", "select"], ["time_of_day", "时段", "select"],
-      ["view_direction", "视野方向", "select"], ["target_tag", "目标 tag", "input"],
+      ["view_direction", "视野方向", "select"], ["value_score", "价值评分", "select"],
+      ["dataset_split", "集合归属", "select"], ["target_tag", "目标 tag", "input"],
       ["noise_tag", "噪声 tag", "input"]
     ];
     const filters = document.querySelector("#filters");
     const statusEl = document.querySelector("#status");
     const rowsEl = document.querySelector("#rows");
     const exportEl = document.querySelector("#export");
+    const reportStatusEl = document.querySelector("#report-status");
+    const segmentReportEl = document.querySelector("#segment-report");
+    const targetReportEl = document.querySelector("#target-report");
+    const noiseReportEl = document.querySelector("#noise-report");
+    const scoreReportEl = document.querySelector("#score-report");
     const dialog = document.querySelector("#frame-dialog");
     const form = document.querySelector("#frame-form");
     let currentRows = [];
@@ -181,7 +224,7 @@ HTML = """<!doctype html>
         return `<label>${label}<select name="${name}">${optionHtml(optionData[name])}</select></label>`;
       }).join("");
 
-      ["weather", "time_of_day", "view_direction"].forEach(name => {
+      ["weather", "time_of_day", "view_direction", "value_score", "dataset_split"].forEach(name => {
         form.elements[name].innerHTML = (optionData[name] || []).map(value => `<option value="${esc(value)}">${esc(value)}</option>`).join("");
       });
     }
@@ -201,7 +244,8 @@ HTML = """<!doctype html>
           </td>
           <td>${esc(row.frame_id)}</td><td>${esc(row.segment_name)}</td><td>${esc(row.frame_index)}</td>
           <td>${esc(row.prototype_id)}</td><td>${esc(row.collection_version)}</td><td>${esc(row.weather)}</td>
-          <td>${esc(row.time_of_day)}</td><td>${esc(row.view_direction)}</td><td class="path">${esc(row.data_path)}</td>
+          <td>${esc(row.time_of_day)}</td><td>${esc(row.view_direction)}</td><td>${esc(row.value_score)}</td>
+          <td>${esc(row.dataset_split)}</td><td>${esc(row.model_inference)}</td><td class="path">${esc(row.data_path)}</td>
           <td>${esc(row.target_tags)}</td><td>${esc(row.noise_tags)}</td>
         </tr>
       `).join("");
@@ -213,6 +257,7 @@ HTML = """<!doctype html>
         prototype_id: optionData.prototype_id?.[0] || "P001",
         collection_version: optionData.collection_version?.[0] || "v1.0",
         weather: "晴天", time_of_day: "白天", view_direction: "前",
+        value_score: "5", dataset_split: "训练集", model_inference: "",
         data_path: "s3://mock-dataset/raw/SEG_NEW/000000.jpg",
         target_tags: "", noise_tags: ""
       };
@@ -223,7 +268,8 @@ HTML = """<!doctype html>
       document.querySelector("#dialog-title").textContent = row ? `编辑帧 ${data.frame_id}` : "新增帧";
       [
         "frame_id", "segment_name", "frame_index", "prototype_id", "collection_version",
-        "weather", "time_of_day", "view_direction", "data_path", "target_tags", "noise_tags"
+        "weather", "time_of_day", "view_direction", "value_score", "dataset_split",
+        "model_inference", "data_path", "target_tags", "noise_tags"
       ].forEach(name => form.elements[name].value = data[name] || "");
       dialog.showModal();
     }
@@ -244,6 +290,9 @@ HTML = """<!doctype html>
         weather: form.elements.weather.value,
         time_of_day: form.elements.time_of_day.value,
         view_direction: form.elements.view_direction.value,
+        value_score: form.elements.value_score.value,
+        dataset_split: form.elements.dataset_split.value,
+        model_inference: form.elements.model_inference.value.trim(),
         data_path: form.elements.data_path.value.trim(),
         target_tags: targetTags,
         noise_tags: noiseTags
@@ -261,6 +310,7 @@ HTML = """<!doctype html>
       dialog.close();
       await loadOptions();
       await search();
+      await loadReport();
       statusEl.textContent = `已保存帧 ${data.frame_id}`;
     }
 
@@ -274,11 +324,36 @@ HTML = """<!doctype html>
       }
       await loadOptions();
       await search();
+      await loadReport();
       statusEl.textContent = `已删除帧 ${frameId}`;
+    }
+
+    function renderBars(el, rows, labelKey) {
+      const maxCount = Math.max(1, ...rows.map(row => row.count));
+      el.innerHTML = rows.length ? rows.map(row => `
+        <div class="bar-row">
+          <div>${esc(row[labelKey])}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${(row.count / maxCount) * 100}%"></div></div>
+          <div>${esc(row.count)}</div>
+        </div>
+      `).join("") : "<div class='hint'>暂无数据</div>";
+    }
+
+    async function loadReport() {
+      const response = await fetch("/api/report");
+      const data = await response.json();
+      reportStatusEl.textContent = `总帧数 ${data.frame_count}`;
+      segmentReportEl.innerHTML = data.split_by_segment.length ? data.split_by_segment.map(row => `
+        <tr><td>${esc(row.segment_name)}</td><td>${esc(row["训练集"])}</td><td>${esc(row["验证集"])}</td><td>${esc(row["测试集"])}</td><td>${esc(row.total)}</td></tr>
+      `).join("") : "<tr><td colspan='5'>暂无数据</td></tr>";
+      renderBars(targetReportEl, data.target_tags, "tag");
+      renderBars(noiseReportEl, data.noise_tags, "tag");
+      renderBars(scoreReportEl, data.value_scores, "score");
     }
 
     document.querySelector("#search").addEventListener("click", search);
     document.querySelector("#new-frame").addEventListener("click", () => openForm(null));
+    document.querySelector("#refresh-report").addEventListener("click", loadReport);
     document.querySelector("#close-dialog").addEventListener("click", () => dialog.close());
     document.querySelector("#cancel-dialog").addEventListener("click", () => dialog.close());
     rowsEl.addEventListener("click", event => {
@@ -300,7 +375,7 @@ HTML = """<!doctype html>
       document.querySelectorAll("select, input").forEach(el => el.value = "");
       search();
     });
-    loadOptions().then(search);
+    loadOptions().then(search).then(loadReport);
   </script>
 </body>
 </html>
@@ -314,6 +389,7 @@ def first(values: dict[str, list[str]], name: str) -> str | None:
 
 def query_from_params(values: dict[str, list[str]]) -> Query:
     frame_index = first(values, "frame_index")
+    value_score = first(values, "value_score")
     return Query(
         segment_name=first(values, "segment_name"),
         frame_index=int(frame_index) if frame_index else None,
@@ -322,6 +398,8 @@ def query_from_params(values: dict[str, list[str]]) -> Query:
         weather=first(values, "weather"),
         time_of_day=first(values, "time_of_day"),
         view_direction=first(values, "view_direction"),
+        value_score=int(value_score) if value_score else None,
+        dataset_split=first(values, "dataset_split"),
         target_tag=first(values, "target_tag"),
         noise_tag=first(values, "noise_tag"),
     )
@@ -353,6 +431,16 @@ def validate_choice(value: str, options: list[str], field_name: str) -> str:
     return value
 
 
+def validate_value_score(value: str) -> str:
+    try:
+        score = int(value)
+    except ValueError as exc:
+        raise ValueError("value_score must be an integer from 1 to 10") from exc
+    if score < 1 or score > 10:
+        raise ValueError("value_score must be an integer from 1 to 10")
+    return str(score)
+
+
 def save_frame_payload(data_dir: Path, state: dict[str, object], payload: dict[str, object]) -> str:
     frames = list(state["frames"])
     frame_id = str(payload.get("frame_id", "")).strip()
@@ -378,6 +466,9 @@ def save_frame_payload(data_dir: Path, state: dict[str, object], payload: dict[s
         "weather": validate_choice(require_text(payload, "weather"), ["晴天", "阴天", "雨天"], "weather"),
         "time_of_day": validate_choice(require_text(payload, "time_of_day"), ["白天", "晚上"], "time_of_day"),
         "view_direction": validate_choice(require_text(payload, "view_direction"), ["前", "后", "左", "右"], "view_direction"),
+        "value_score": validate_value_score(require_text(payload, "value_score")),
+        "dataset_split": validate_choice(require_text(payload, "dataset_split"), ["训练集", "验证集", "测试集"], "dataset_split"),
+        "model_inference": str(payload.get("model_inference", "")).strip(),
         "data_path": require_text(payload, "data_path"),
         "target_tags": ", ".join(target_tags),
         "noise_tags": ", ".join(noise_tags),
@@ -451,6 +542,9 @@ def make_handler(data_dir: Path) -> type[BaseHTTPRequestHandler]:
                 return
             if parsed.path == "/api/options":
                 self.send_json(state["options"])
+                return
+            if parsed.path == "/api/report":
+                self.send_json(build_report(state["frames"]))
                 return
             if parsed.path == "/api/query":
                 query = query_from_params(params)

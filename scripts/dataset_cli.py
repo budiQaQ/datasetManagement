@@ -20,6 +20,9 @@ DISPLAY_COLUMNS = [
     "weather",
     "time_of_day",
     "view_direction",
+    "value_score",
+    "dataset_split",
+    "model_inference",
     "data_path",
     "target_tags",
     "noise_tags",
@@ -35,6 +38,8 @@ def build_query(args: argparse.Namespace) -> Query:
         weather=args.weather,
         time_of_day=args.time,
         view_direction=args.view,
+        value_score=args.score,
+        dataset_split=args.split,
         target_tag=args.target,
         noise_tag=args.noise,
     )
@@ -112,6 +117,8 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--weather", choices=["晴天", "阴天", "雨天"])
     query.add_argument("--time", choices=["白天", "晚上"])
     query.add_argument("--view", choices=["前", "后", "左", "右"])
+    query.add_argument("--score", type=int, choices=range(1, 11), metavar="[1-10]")
+    query.add_argument("--split", choices=["训练集", "验证集", "测试集"])
     query.add_argument("--target", help="Exact target tag to match.")
     query.add_argument("--noise", help="Exact noise tag to match.")
     query.add_argument("--limit", type=int, default=20)

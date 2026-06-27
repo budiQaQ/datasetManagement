@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import csv
 import re
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +14,7 @@ DEFAULT_DATA_DIR = Path("data/seed")
 WEATHER_OPTIONS = ["晴天", "阴天", "雨天"]
 TIME_OF_DAY_OPTIONS = ["白天", "晚上"]
 VIEW_DIRECTION_OPTIONS = ["前", "后", "左", "右"]
+DATASET_SPLIT_OPTIONS = ["训练集", "验证集", "测试集"]
 MAX_TAGS_PER_TYPE = 10
 
 FRAME_FIELDNAMES = [
@@ -24,6 +26,9 @@ FRAME_FIELDNAMES = [
     "weather",
     "time_of_day",
     "view_direction",
+    "value_score",
+    "dataset_split",
+    "model_inference",
     "data_path",
     "target_tags",
     "noise_tags",
@@ -39,6 +44,8 @@ class Query:
     weather: str | None = None
     time_of_day: str | None = None
     view_direction: str | None = None
+    value_score: int | None = None
+    dataset_split: str | None = None
     target_tag: str | None = None
     noise_tag: str | None = None
 
@@ -68,6 +75,9 @@ def normalize_frame(row: dict[str, str]) -> dict[str, str]:
         "weather": normalize_weather(row.get("weather", "")),
         "time_of_day": normalize_time_of_day(row.get("time_of_day", "")),
         "view_direction": normalize_view_direction(row.get("view_direction", "")),
+        "value_score": normalize_value_score(row.get("value_score", "")),
+        "dataset_split": normalize_dataset_split(row.get("dataset_split", "")),
+        "model_inference": row.get("model_inference", ""),
         "data_path": data_path,
         "target_tags": join_tags(split_tags(target_tags)),
         "noise_tags": join_tags(split_tags(noise_tags if noise_tags != "clean" else "")),
@@ -142,6 +152,26 @@ def normalize_view_direction(value: str) -> str:
     return mapping.get(value, value if value in VIEW_DIRECTION_OPTIONS else VIEW_DIRECTION_OPTIONS[0])
 
 
+def normalize_dataset_split(value: str) -> str:
+    mapping = {
+        "train": "训练集",
+        "training": "训练集",
+        "val": "验证集",
+        "valid": "验证集",
+        "validation": "验证集",
+        "test": "测试集",
+    }
+    return mapping.get(value, value if value in DATASET_SPLIT_OPTIONS else DATASET_SPLIT_OPTIONS[0])
+
+
+def normalize_value_score(value: str) -> str:
+    try:
+        score = int(value)
+    except (TypeError, ValueError):
+        return "5"
+    return str(min(max(score, 1), 10))
+
+
 def frame_matches(row: dict[str, str], query: Query) -> bool:
     exact_fields = [
         "segment_name",
@@ -150,6 +180,7 @@ def frame_matches(row: dict[str, str], query: Query) -> bool:
         "weather",
         "time_of_day",
         "view_direction",
+        "dataset_split",
     ]
     for field in exact_fields:
         expected = getattr(query, field)
@@ -157,6 +188,8 @@ def frame_matches(row: dict[str, str], query: Query) -> bool:
             return False
 
     if query.frame_index is not None and int(row["frame_index"]) != query.frame_index:
+        return False
+    if query.value_score is not None and int(row["value_score"]) != query.value_score:
         return False
     if query.target_tag is not None and query.target_tag not in split_tags(row["target_tags"]):
         return False
@@ -192,4 +225,49 @@ def available_options(frames: list[dict[str, str]]) -> dict[str, list[str]]:
         "weather": WEATHER_OPTIONS,
         "time_of_day": TIME_OF_DAY_OPTIONS,
         "view_direction": VIEW_DIRECTION_OPTIONS,
+        "dataset_split": DATASET_SPLIT_OPTIONS,
+        "value_score": [str(value) for value in range(1, 11)],
+    }
+
+
+def build_report(frames: list[dict[str, str]]) -> dict[str, object]:
+    split_by_segment: dict[str, Counter[str]] = defaultdict(Counter)
+    target_counter: Counter[str] = Counter()
+    noise_counter: Counter[str] = Counter()
+    score_counter: Counter[str] = Counter()
+
+    for row in frames:
+        segment_name = row["segment_name"]
+        split = row["dataset_split"]
+        split_by_segment[segment_name][split] += 1
+        score_counter[row["value_score"]] += 1
+        target_counter.update(split_tags(row["target_tags"]))
+        noise_counter.update(split_tags(row["noise_tags"]))
+
+    segment_rows = []
+    for segment_name in sorted(split_by_segment):
+        counts = split_by_segment[segment_name]
+        segment_rows.append(
+            {
+                "segment_name": segment_name,
+                "训练集": counts["训练集"],
+                "验证集": counts["验证集"],
+                "测试集": counts["测试集"],
+                "total": sum(counts.values()),
+            }
+        )
+
+    return {
+        "frame_count": len(frames),
+        "split_by_segment": segment_rows,
+        "target_tags": [
+            {"tag": tag, "count": count} for tag, count in target_counter.most_common()
+        ],
+        "noise_tags": [
+            {"tag": tag, "count": count} for tag, count in noise_counter.most_common()
+        ],
+        "value_scores": [
+            {"score": str(score), "count": score_counter[str(score)]}
+            for score in range(1, 11)
+        ],
     }

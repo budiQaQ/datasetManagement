@@ -11,6 +11,7 @@ from collections import Counter
 from pathlib import Path
 
 from dataset_core import (
+    DATASET_SPLIT_OPTIONS,
     FRAME_FIELDNAMES,
     TIME_OF_DAY_OPTIONS,
     VIEW_DIRECTION_OPTIONS,
@@ -47,6 +48,15 @@ NOISE_TAGS = [
     "眩光",
 ]
 
+MODEL_INFERENCE_DESCRIPTIONS = [
+    "模型正确识别主要目标",
+    "模型漏检远处小目标",
+    "模型对遮挡目标置信度偏低",
+    "模型误检反光区域",
+    "模型对雨天噪声鲁棒性一般",
+    "模型输出稳定",
+]
+
 
 def sample_tags(rng: random.Random, candidates: list[str], min_count: int, max_count: int) -> list[str]:
     count = rng.randint(min_count, max_count)
@@ -69,6 +79,7 @@ def generate(args: argparse.Namespace) -> None:
     dataset_version_frames = []
     weather_counter: Counter[str] = Counter()
     view_counter: Counter[str] = Counter()
+    split_counter: Counter[str] = Counter()
     target_counter: Counter[str] = Counter()
     noise_counter: Counter[str] = Counter()
 
@@ -84,6 +95,7 @@ def generate(args: argparse.Namespace) -> None:
             view_direction = rng.choice(VIEW_DIRECTION_OPTIONS)
             target_tags = sample_tags(rng, TARGET_TAGS, 1, 4)
             noise_tags = sample_tags(rng, NOISE_TAGS, 0, 3)
+            dataset_split = rng.choices(DATASET_SPLIT_OPTIONS, weights=[80, 10, 10], k=1)[0]
 
             frames.append(
                 {
@@ -95,6 +107,9 @@ def generate(args: argparse.Namespace) -> None:
                     "weather": weather,
                     "time_of_day": time_of_day,
                     "view_direction": view_direction,
+                    "value_score": rng.randint(1, 10),
+                    "dataset_split": dataset_split,
+                    "model_inference": rng.choice(MODEL_INFERENCE_DESCRIPTIONS),
                     "data_path": f"s3://mock-dataset/raw/{segment_name}/{frame_index:06d}.jpg",
                     "target_tags": ", ".join(target_tags),
                     "noise_tags": ", ".join(noise_tags),
@@ -103,10 +118,11 @@ def generate(args: argparse.Namespace) -> None:
 
             weather_counter[weather] += 1
             view_counter[view_direction] += 1
+            split_counter[dataset_split] += 1
             target_counter.update(target_tags)
             noise_counter.update(noise_tags)
 
-            split = rng.choices(["train", "val", "test"], weights=[80, 10, 10], k=1)[0]
+            split = {"训练集": "train", "验证集": "val", "测试集": "test"}[dataset_split]
             dataset_version_frames.append(
                 {"dataset_version_id": 1, "frame_id": frame_id, "split": split}
             )
@@ -140,6 +156,7 @@ def generate(args: argparse.Namespace) -> None:
         "frame_count": len(frames),
         "weather_distribution": dict(weather_counter.most_common()),
         "view_direction_distribution": dict(view_counter.most_common()),
+        "dataset_split_distribution": dict(split_counter.most_common()),
         "top_target_tags": dict(target_counter.most_common(10)),
         "top_noise_tags": dict(noise_counter.most_common(10)),
     }
