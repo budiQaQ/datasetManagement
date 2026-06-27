@@ -234,6 +234,8 @@ def build_report(frames: list[dict[str, str]]) -> dict[str, object]:
     split_by_segment: dict[str, Counter[str]] = defaultdict(Counter)
     target_counter: Counter[str] = Counter()
     noise_counter: Counter[str] = Counter()
+    target_split_counter: dict[str, Counter[str]] = defaultdict(Counter)
+    noise_split_counter: dict[str, Counter[str]] = defaultdict(Counter)
     score_counter: Counter[str] = Counter()
 
     for row in frames:
@@ -241,8 +243,14 @@ def build_report(frames: list[dict[str, str]]) -> dict[str, object]:
         split = row["dataset_split"]
         split_by_segment[segment_name][split] += 1
         score_counter[row["value_score"]] += 1
-        target_counter.update(split_tags(row["target_tags"]))
-        noise_counter.update(split_tags(row["noise_tags"]))
+        target_tags = split_tags(row["target_tags"])
+        noise_tags = split_tags(row["noise_tags"])
+        target_counter.update(target_tags)
+        noise_counter.update(noise_tags)
+        for tag in target_tags:
+            target_split_counter[tag][split] += 1
+        for tag in noise_tags:
+            noise_split_counter[tag][split] += 1
 
     segment_rows = []
     for segment_name in sorted(split_by_segment):
@@ -261,10 +269,24 @@ def build_report(frames: list[dict[str, str]]) -> dict[str, object]:
         "frame_count": len(frames),
         "split_by_segment": segment_rows,
         "target_tags": [
-            {"tag": tag, "count": count} for tag, count in target_counter.most_common()
+            {
+                "tag": tag,
+                "count": count,
+                "训练集": target_split_counter[tag]["训练集"],
+                "验证集": target_split_counter[tag]["验证集"],
+                "测试集": target_split_counter[tag]["测试集"],
+            }
+            for tag, count in target_counter.most_common()
         ],
         "noise_tags": [
-            {"tag": tag, "count": count} for tag, count in noise_counter.most_common()
+            {
+                "tag": tag,
+                "count": count,
+                "训练集": noise_split_counter[tag]["训练集"],
+                "验证集": noise_split_counter[tag]["验证集"],
+                "测试集": noise_split_counter[tag]["测试集"],
+            }
+            for tag, count in noise_counter.most_common()
         ],
         "value_scores": [
             {"score": str(score), "count": score_counter[str(score)]}

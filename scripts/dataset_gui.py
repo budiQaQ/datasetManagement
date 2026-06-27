@@ -56,12 +56,22 @@ HTML = """<!doctype html>
     .table-wrap { overflow: auto; background: #fff; border: 1px solid #dfe3ea; border-radius: 8px; }
     .report { background: #fff; border: 1px solid #dfe3ea; border-radius: 8px; padding: 14px; margin-bottom: 16px; }
     .report h2 { margin: 0 0 12px; font-size: 18px; letter-spacing: 0; }
-    .report-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+    .report-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
     .report-panel { border: 1px solid #edf0f4; border-radius: 6px; padding: 10px; overflow: auto; }
     .report-panel h3 { margin: 0 0 8px; font-size: 14px; letter-spacing: 0; }
     .bar-row { display: grid; grid-template-columns: minmax(72px, 1fr) 4fr 46px; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
     .bar-track { height: 10px; background: #eef2f6; border-radius: 999px; overflow: hidden; }
     .bar-fill { height: 100%; background: #2f669f; }
+    .stack-row { display: grid; grid-template-columns: minmax(96px, 1fr) 4fr 54px; align-items: center; gap: 10px; margin: 8px 0; font-size: 13px; }
+    .stack-bar { display: flex; height: 16px; overflow: hidden; border-radius: 999px; background: #eef2f6; }
+    .stack-part { min-width: 0; height: 100%; }
+    .train { background: #2f669f; }
+    .val { background: #2f9f6b; }
+    .test { background: #d97706; }
+    .legend { display: flex; gap: 12px; flex-wrap: wrap; margin: 6px 0 10px; color: #4d5868; font-size: 12px; }
+    .legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    .report-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 10px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1120px; }
     th, td { padding: 9px 10px; border-bottom: 1px solid #edf0f4; text-align: left; vertical-align: top; }
     th { background: #f0f3f7; color: #344054; position: sticky; top: 0; }
@@ -149,15 +159,25 @@ HTML = """<!doctype html>
       <div class="report-grid">
         <div class="report-panel">
           <h3>训练/验证/测试在数据段上的分布</h3>
-          <div class="table-wrap"><table><thead><tr><th>数据段</th><th>训练集</th><th>验证集</th><th>测试集</th><th>总数</th></tr></thead><tbody id="segment-report"></tbody></table></div>
+          <div class="legend">
+            <span><i class="swatch train"></i>训练集</span>
+            <span><i class="swatch val"></i>验证集</span>
+            <span><i class="swatch test"></i>测试集</span>
+          </div>
+          <div id="segment-report"></div>
         </div>
         <div class="report-panel">
-          <h3>目标 tag 分布</h3>
-          <div id="target-report"></div>
-        </div>
-        <div class="report-panel">
-          <h3>噪声 tag 分布</h3>
-          <div id="noise-report"></div>
+          <h3>tag 分布</h3>
+          <div class="report-controls">
+            <label>类别<select id="tag-report-kind"><option value="target_tags">目标 tag</option><option value="noise_tags">噪声 tag</option></select></label>
+            <label>tag<select id="tag-report-select"></select></label>
+          </div>
+          <div class="legend">
+            <span><i class="swatch train"></i>训练集</span>
+            <span><i class="swatch val"></i>验证集</span>
+            <span><i class="swatch test"></i>测试集</span>
+          </div>
+          <div id="tag-report"></div>
         </div>
         <div class="report-panel">
           <h3>数据价值评分分布</h3>
@@ -180,13 +200,15 @@ HTML = """<!doctype html>
     const exportEl = document.querySelector("#export");
     const reportStatusEl = document.querySelector("#report-status");
     const segmentReportEl = document.querySelector("#segment-report");
-    const targetReportEl = document.querySelector("#target-report");
-    const noiseReportEl = document.querySelector("#noise-report");
+    const tagReportKindEl = document.querySelector("#tag-report-kind");
+    const tagReportSelectEl = document.querySelector("#tag-report-select");
+    const tagReportEl = document.querySelector("#tag-report");
     const scoreReportEl = document.querySelector("#score-report");
     const dialog = document.querySelector("#frame-dialog");
     const form = document.querySelector("#frame-form");
     let currentRows = [];
     let optionData = {};
+    let reportData = null;
 
     function esc(value) {
       return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
@@ -339,21 +361,64 @@ HTML = """<!doctype html>
       `).join("") : "<div class='hint'>暂无数据</div>";
     }
 
+    function stackPart(row, key, className) {
+      const total = Math.max(1, row.total || row.count || 0);
+      const width = ((row[key] || 0) / total) * 100;
+      return `<div class="stack-part ${className}" style="width:${width}%" title="${key}: ${esc(row[key] || 0)}"></div>`;
+    }
+
+    function renderStackRows(el, rows, labelKey) {
+      el.innerHTML = rows.length ? rows.map(row => `
+        <div class="stack-row">
+          <div>${esc(row[labelKey])}</div>
+          <div class="stack-bar">
+            ${stackPart(row, "训练集", "train")}
+            ${stackPart(row, "验证集", "val")}
+            ${stackPart(row, "测试集", "test")}
+          </div>
+          <div>${esc(row.total || row.count || 0)}</div>
+        </div>
+      `).join("") : "<div class='hint'>暂无数据</div>";
+    }
+
+    function renderSelectedTagReport() {
+      if (!reportData) return;
+      const rows = reportData[tagReportKindEl.value] || [];
+      const selectedTag = tagReportSelectEl.value || rows[0]?.tag || "";
+      const row = rows.find(item => item.tag === selectedTag);
+      tagReportSelectEl.innerHTML = rows.length ? rows.map(item => `<option value="${esc(item.tag)}">${esc(item.tag)} (${esc(item.count)})</option>`).join("") : "<option value=''>暂无 tag</option>";
+      tagReportSelectEl.value = selectedTag;
+      tagReportEl.innerHTML = row ? `
+        <div class="stack-row">
+          <div>${esc(row.tag)}</div>
+          <div class="stack-bar">
+            ${stackPart(row, "训练集", "train")}
+            ${stackPart(row, "验证集", "val")}
+            ${stackPart(row, "测试集", "test")}
+          </div>
+          <div>${esc(row.count)}</div>
+        </div>
+        <div class="hint">训练集 ${esc(row["训练集"])}，验证集 ${esc(row["验证集"])}，测试集 ${esc(row["测试集"])}</div>
+      ` : "<div class='hint'>暂无数据</div>";
+    }
+
     async function loadReport() {
       const response = await fetch("/api/report");
-      const data = await response.json();
-      reportStatusEl.textContent = `总帧数 ${data.frame_count}`;
-      segmentReportEl.innerHTML = data.split_by_segment.length ? data.split_by_segment.map(row => `
-        <tr><td>${esc(row.segment_name)}</td><td>${esc(row["训练集"])}</td><td>${esc(row["验证集"])}</td><td>${esc(row["测试集"])}</td><td>${esc(row.total)}</td></tr>
-      `).join("") : "<tr><td colspan='5'>暂无数据</td></tr>";
-      renderBars(targetReportEl, data.target_tags, "tag");
-      renderBars(noiseReportEl, data.noise_tags, "tag");
-      renderBars(scoreReportEl, data.value_scores, "score");
+      reportData = await response.json();
+      reportStatusEl.textContent = `总帧数 ${reportData.frame_count}`;
+      renderStackRows(segmentReportEl, reportData.split_by_segment, "segment_name");
+      renderSelectedTagReport();
+      renderBars(scoreReportEl, reportData.value_scores, "score");
     }
 
     document.querySelector("#search").addEventListener("click", search);
     document.querySelector("#new-frame").addEventListener("click", () => openForm(null));
     document.querySelector("#refresh-report").addEventListener("click", loadReport);
+    tagReportKindEl.addEventListener("change", () => {
+      tagReportSelectEl.value = "";
+      renderSelectedTagReport();
+    });
+    tagReportSelectEl.addEventListener("change", renderSelectedTagReport);
     document.querySelector("#close-dialog").addEventListener("click", () => dialog.close());
     document.querySelector("#cancel-dialog").addEventListener("click", () => dialog.close());
     rowsEl.addEventListener("click", event => {
