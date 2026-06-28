@@ -62,6 +62,61 @@ chcp 65001
 python3 scripts/dataset_gui.py
 ```
 
+## Linux 服务器部署和远程访问
+
+在服务器上拉取项目：
+
+```bash
+git clone git@github.com:budiQaQ/datasetManagement.git
+cd datasetManagement
+python3 --version
+```
+
+推荐使用 SSH 隧道访问，不需要把服务端口暴露到公网：
+
+```bash
+python3 scripts/dataset_gui.py --host 127.0.0.1 --port 8765
+```
+
+然后在你的本机执行：
+
+```bash
+ssh -L 8765:127.0.0.1:8765 用户名@服务器IP
+```
+
+本机浏览器打开：
+
+```text
+http://127.0.0.1:8765
+```
+
+如果服务器只在可信局域网内使用，也可以直接监听所有网卡：
+
+```bash
+python3 scripts/dataset_gui.py --host 0.0.0.0 --port 8765
+```
+
+本机浏览器访问：
+
+```text
+http://服务器IP:8765
+```
+
+如果服务器防火墙拦截端口，需要放通：
+
+```bash
+sudo ufw allow 8765/tcp
+```
+
+后台运行：
+
+```bash
+nohup python3 scripts/dataset_gui.py --host 0.0.0.0 --port 8765 > dataset_gui.log 2>&1 &
+tail -f dataset_gui.log
+```
+
+注意：当前服务没有登录鉴权。不要直接暴露到公网；公网环境优先使用 SSH 隧道、VPN 或反向代理鉴权。
+
 ## 命令行筛选
 
 查看可选值：
