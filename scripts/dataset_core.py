@@ -236,13 +236,13 @@ def build_report(frames: list[dict[str, str]]) -> dict[str, object]:
     noise_counter: Counter[str] = Counter()
     target_split_counter: dict[str, Counter[str]] = defaultdict(Counter)
     noise_split_counter: dict[str, Counter[str]] = defaultdict(Counter)
-    score_counter: Counter[str] = Counter()
+    scores: list[int] = []
 
     for row in frames:
         segment_name = row["segment_name"]
         split = row["dataset_split"]
         split_by_segment[segment_name][split] += 1
-        score_counter[row["value_score"]] += 1
+        scores.append(int(row["value_score"]))
         target_tags = split_tags(row["target_tags"])
         noise_tags = split_tags(row["noise_tags"])
         target_counter.update(target_tags)
@@ -288,8 +288,17 @@ def build_report(frames: list[dict[str, str]]) -> dict[str, object]:
             }
             for tag, count in noise_counter.most_common()
         ],
-        "value_scores": [
-            {"score": str(score), "count": score_counter[str(score)]}
-            for score in range(1, 11)
-        ],
+        "value_score_stats": score_stats(scores),
+    }
+
+
+def score_stats(scores: list[int]) -> dict[str, float | int | None]:
+    if not scores:
+        return {"count": 0, "mean": None, "stddev": None}
+    mean = sum(scores) / len(scores)
+    variance = sum((score - mean) ** 2 for score in scores) / len(scores)
+    return {
+        "count": len(scores),
+        "mean": round(mean, 2),
+        "stddev": round(variance ** 0.5, 2),
     }

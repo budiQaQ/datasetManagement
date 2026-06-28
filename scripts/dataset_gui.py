@@ -72,6 +72,10 @@ HTML = """<!doctype html>
     .legend span { display: inline-flex; align-items: center; gap: 5px; }
     .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
     .report-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 10px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 10px; }
+    .metric { border: 1px solid #edf0f4; border-radius: 6px; padding: 12px; background: #fafbfc; }
+    .metric-label { color: #697586; font-size: 12px; margin-bottom: 6px; }
+    .metric-value { font-size: 26px; font-weight: 650; color: #1d2430; letter-spacing: 0; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1120px; }
     th, td { padding: 9px 10px; border-bottom: 1px solid #edf0f4; text-align: left; vertical-align: top; }
     th { background: #f0f3f7; color: #344054; position: sticky; top: 0; }
@@ -180,7 +184,7 @@ HTML = """<!doctype html>
           <div id="tag-report"></div>
         </div>
         <div class="report-panel">
-          <h3>数据价值评分分布</h3>
+          <h3>数据价值评分</h3>
           <div id="score-report"></div>
         </div>
       </div>
@@ -350,15 +354,16 @@ HTML = """<!doctype html>
       statusEl.textContent = `已删除帧 ${frameId}`;
     }
 
-    function renderBars(el, rows, labelKey) {
-      const maxCount = Math.max(1, ...rows.map(row => row.count));
-      el.innerHTML = rows.length ? rows.map(row => `
-        <div class="bar-row">
-          <div>${esc(row[labelKey])}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${(row.count / maxCount) * 100}%"></div></div>
-          <div>${esc(row.count)}</div>
+    function renderScoreStats(stats) {
+      const mean = stats.mean === null ? "暂无" : stats.mean;
+      const stddev = stats.stddev === null ? "暂无" : stats.stddev;
+      scoreReportEl.innerHTML = `
+        <div class="metric-grid">
+          <div class="metric"><div class="metric-label">均值</div><div class="metric-value">${esc(mean)}</div></div>
+          <div class="metric"><div class="metric-label">标准差</div><div class="metric-value">${esc(stddev)}</div></div>
         </div>
-      `).join("") : "<div class='hint'>暂无数据</div>";
+        <div class="hint">样本数 ${esc(stats.count || 0)}</div>
+      `;
     }
 
     function stackPart(row, key, className) {
@@ -408,7 +413,7 @@ HTML = """<!doctype html>
       reportStatusEl.textContent = `总帧数 ${reportData.frame_count}`;
       renderStackRows(segmentReportEl, reportData.split_by_segment, "segment_name");
       renderSelectedTagReport();
-      renderBars(scoreReportEl, reportData.value_scores, "score");
+      renderScoreStats(reportData.value_score_stats);
     }
 
     document.querySelector("#search").addEventListener("click", search);
