@@ -8,6 +8,7 @@ import csv
 import json
 import random
 from collections import Counter
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from dataset_core import (
@@ -57,6 +58,9 @@ MODEL_INFERENCE_DESCRIPTIONS = [
     "模型输出稳定",
 ]
 
+SEGMENT_START_TIME = datetime(2026, 1, 1, 8, 0, 0)
+SEGMENT_INTERVAL = timedelta(minutes=1)
+
 
 def sample_tags(rng: random.Random, candidates: list[str], min_count: int, max_count: int) -> list[str]:
     count = rng.randint(min_count, max_count)
@@ -85,11 +89,13 @@ def generate(args: argparse.Namespace) -> None:
 
     frame_id = 1
     for segment_idx in range(1, args.segments + 1):
-        segment_name = f"SEG_{segment_idx:05d}"
+        segment_time = SEGMENT_START_TIME + (segment_idx - 1) * SEGMENT_INTERVAL
+        segment_name = segment_time.strftime("%Y%m%d%H%M%S")
         prototype_id = rng.choice(PROTOTYPES)
         collection_version = rng.choice(COLLECTION_VERSIONS)
 
         for frame_index in range(args.frames_per_segment):
+            frame_index_text = f"{frame_index:06d}"
             weather = rng.choices(WEATHER_OPTIONS, weights=[55, 30, 15], k=1)[0]
             time_of_day = rng.choices(TIME_OF_DAY_OPTIONS, weights=[78, 22], k=1)[0]
             view_direction = rng.choice(VIEW_DIRECTION_OPTIONS)
@@ -101,7 +107,7 @@ def generate(args: argparse.Namespace) -> None:
                 {
                     "frame_id": frame_id,
                     "segment_name": segment_name,
-                    "frame_index": frame_index,
+                    "frame_index": frame_index_text,
                     "prototype_id": prototype_id,
                     "collection_version": collection_version,
                     "weather": weather,
@@ -110,7 +116,7 @@ def generate(args: argparse.Namespace) -> None:
                     "value_score": rng.randint(1, 10),
                     "dataset_split": dataset_split,
                     "model_inference": rng.choice(MODEL_INFERENCE_DESCRIPTIONS),
-                    "data_path": f"s3://mock-dataset/raw/{segment_name}/{frame_index:06d}.jpg",
+                    "data_path": f"s3://mock-dataset/raw/{segment_name}/{frame_index_text}.jpg",
                     "target_tags": ", ".join(target_tags),
                     "noise_tags": ", ".join(noise_tags),
                 }

@@ -12,8 +12,8 @@
 ## 帧字段
 
 - `frame_id`: 内部唯一 ID。
-- `segment_name`: 数据段名。
-- `frame_index`: 帧号。
+- `segment_name`: 数据段名，虚构数据使用 `YYYYMMDDHHMMSS` 时间戳格式，例如 `20260101080000`。
+- `frame_index`: 帧号，虚构数据使用六位数字字符串，例如 `000000`、`000001`。
 - `prototype_id`: 样机编号。
 - `collection_version`: 采集版本。
 - `weather`: 天气，可选 `晴天`、`阴天`、`雨天`。
