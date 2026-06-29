@@ -6,11 +6,13 @@
 
 - 按帧管理数据，`segment_name + frame_index` 唯一定位一帧。
 - 支持新增、编辑、删除、筛选和导出 CSV。
+- GUI 筛选结果支持按 `segment_name` 字符串和 `frame_index` 数值升序/降序排序。
 - 支持固定枚举字段：
   - 天气：`晴天`、`阴天`、`雨天`
   - 时段：`白天`、`晚上`
   - 视野方向：`前`、`后`、`左`、`右`
 - 支持自定义目标 tag 和噪声 tag，每类最多 10 个。
+- 支持两种 tag 筛选逻辑：精准匹配和粗糙匹配。
 - 支持数据价值评分、训练/验证/测试归属、模型推理情况描述。
 - 支持本地报表：数据段上的集合堆叠分布、可选 tag 分布、价值评分均值和标准差。
 
@@ -129,6 +131,14 @@ python3 scripts/dataset_cli.py options
 
 ```bash
 python3 scripts/dataset_cli.py query --weather 雨天 --view 前 --target 行人 --limit 20
+```
+
+默认 tag 使用精准匹配：筛选值必须完整等于某个 tag。例如 `--target 行人` 只匹配 tag 列表中存在完整 `行人` 的帧。
+
+粗糙匹配使用包含逻辑：只要某个 tag 包含筛选值即可。例如下面的命令可以匹配 `成年行人`、`遮挡行人` 等 tag：
+
+```bash
+python3 scripts/dataset_cli.py query --target 行人 --tag-match contains --limit 20
 ```
 
 Windows PowerShell 对应命令：

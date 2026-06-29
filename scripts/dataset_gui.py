@@ -195,7 +195,9 @@ HTML = """<!doctype html>
       ["prototype_id", "样机编号", "select"], ["collection_version", "采集版本", "select"],
       ["weather", "天气", "select"], ["time_of_day", "时段", "select"],
       ["view_direction", "视野方向", "select"], ["value_score", "价值评分", "select"],
-      ["dataset_split", "集合归属", "select"], ["target_tag", "目标 tag", "input"],
+      ["dataset_split", "集合归属", "select"], ["sort_order", "排序", "sortOrder"],
+      ["tag_match_mode", "tag 匹配方式", "tagMatchMode"],
+      ["target_tag", "目标 tag", "input"],
       ["noise_tag", "噪声 tag", "input"]
     ];
     const filters = document.querySelector("#filters");
@@ -245,7 +247,19 @@ HTML = """<!doctype html>
       optionData = await response.json();
       filters.innerHTML = filterConfig.map(([name, label, kind]) => {
         if (kind === "input") {
-          return `<label>${label}<input name="${name}" placeholder="精确匹配单个 tag"></label>`;
+          return `<label>${label}<input name="${name}" placeholder="输入单个 tag 或关键词"></label>`;
+        }
+        if (kind === "tagMatchMode") {
+          return `<label>${label}<select name="${name}">
+            <option value="exact">精准匹配</option>
+            <option value="contains">粗糙匹配</option>
+          </select></label>`;
+        }
+        if (kind === "sortOrder") {
+          return `<label>${label}<select name="${name}">
+            <option value="asc">数据段名 + 帧号升序</option>
+            <option value="desc">数据段名 + 帧号降序</option>
+          </select></label>`;
         }
         return `<label>${label}<select name="${name}">${optionHtml(optionData[name])}</select></label>`;
       }).join("");
@@ -443,6 +457,8 @@ HTML = """<!doctype html>
     });
     document.querySelector("#reset").addEventListener("click", () => {
       document.querySelectorAll("select, input").forEach(el => el.value = "");
+      document.querySelector('[name="sort_order"]').value = "asc";
+      document.querySelector('[name="tag_match_mode"]').value = "exact";
       search();
     });
     loadOptions().then(search).then(loadReport);
@@ -472,6 +488,8 @@ def query_from_params(values: dict[str, list[str]]) -> Query:
         dataset_split=first(values, "dataset_split"),
         target_tag=first(values, "target_tag"),
         noise_tag=first(values, "noise_tag"),
+        tag_match_mode=first(values, "tag_match_mode") or "exact",
+        sort_order=first(values, "sort_order") or "asc",
     )
 
 

@@ -42,6 +42,7 @@ def build_query(args: argparse.Namespace) -> Query:
         dataset_split=args.split,
         target_tag=args.target,
         noise_tag=args.noise,
+        tag_match_mode=args.tag_match,
     )
 
 
@@ -119,8 +120,14 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--view", choices=["前", "后", "左", "右"])
     query.add_argument("--score", type=int, choices=range(1, 11), metavar="[1-10]")
     query.add_argument("--split", choices=["训练集", "验证集", "测试集"])
-    query.add_argument("--target", help="Exact target tag to match.")
-    query.add_argument("--noise", help="Exact noise tag to match.")
+    query.add_argument("--target", help="Target tag filter.")
+    query.add_argument("--noise", help="Noise tag filter.")
+    query.add_argument(
+        "--tag-match",
+        choices=["exact", "contains"],
+        default="exact",
+        help="Tag matching mode: exact requires a full tag match; contains matches any tag containing the filter.",
+    )
     query.add_argument("--limit", type=int, default=20)
     query.add_argument("--export", help="Export all matched rows to a CSV file.")
     query.set_defaults(func=run_query)

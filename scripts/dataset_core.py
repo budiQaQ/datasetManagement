@@ -15,6 +15,8 @@ WEATHER_OPTIONS = ["晴天", "阴天", "雨天"]
 TIME_OF_DAY_OPTIONS = ["白天", "晚上"]
 VIEW_DIRECTION_OPTIONS = ["前", "后", "左", "右"]
 DATASET_SPLIT_OPTIONS = ["训练集", "验证集", "测试集"]
+TAG_MATCH_MODE_OPTIONS = ["exact", "contains"]
+SORT_ORDER_OPTIONS = ["asc", "desc"]
 MAX_TAGS_PER_TYPE = 10
 
 FRAME_FIELDNAMES = [
@@ -48,6 +50,8 @@ class Query:
     dataset_split: str | None = None
     target_tag: str | None = None
     noise_tag: str | None = None
+    tag_match_mode: str = "exact"
+    sort_order: str = "asc"
 
 
 def load_csv(path: Path) -> list[dict[str, str]]:
@@ -112,6 +116,14 @@ def join_tags(tags: list[str]) -> str:
 def validate_tags(tags: list[str], field_name: str) -> None:
     if len(tags) > MAX_TAGS_PER_TYPE:
         raise ValueError(f"{field_name}最多允许{MAX_TAGS_PER_TYPE}个")
+
+
+def tag_matches(tags_value: str, expected: str, match_mode: str = "exact") -> bool:
+    tags = split_tags(tags_value)
+    if match_mode == "contains":
+        expected_lower = expected.casefold()
+        return any(expected_lower in tag.casefold() for tag in tags)
+    return expected in tags
 
 
 def normalize_weather(value: str) -> str:
@@ -191,11 +203,23 @@ def frame_matches(row: dict[str, str], query: Query) -> bool:
         return False
     if query.value_score is not None and int(row["value_score"]) != query.value_score:
         return False
-    if query.target_tag is not None and query.target_tag not in split_tags(row["target_tags"]):
+    if query.target_tag is not None and not tag_matches(
+        row["target_tags"], query.target_tag, query.tag_match_mode
+    ):
         return False
-    if query.noise_tag is not None and query.noise_tag not in split_tags(row["noise_tags"]):
+    if query.noise_tag is not None and not tag_matches(
+        row["noise_tags"], query.noise_tag, query.tag_match_mode
+    ):
         return False
     return True
+
+
+def frame_sort_key(row: dict[str, str]) -> tuple[str, int]:
+    try:
+        frame_index = int(row["frame_index"])
+    except (TypeError, ValueError):
+        frame_index = -1
+    return row["segment_name"], frame_index
 
 
 def query_frames(
@@ -203,12 +227,14 @@ def query_frames(
     query: Query,
     limit: int | None = 50,
 ) -> list[dict[str, str]]:
-    results = []
+    results: list[dict[str, str]] = []
     for row in frames:
         if frame_matches(row, query):
             results.append(dict(row))
-            if limit is not None and len(results) >= limit:
-                break
+    reverse = query.sort_order == "desc"
+    results.sort(key=frame_sort_key, reverse=reverse)
+    if limit is not None:
+        return results[:limit]
     return results
 
 

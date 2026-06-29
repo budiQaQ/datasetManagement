@@ -70,6 +70,15 @@ python3 scripts/dataset_cli.py query \
   --limit 20
 ```
 
+tag 筛选默认使用精准匹配，筛选值必须完整等于某个 tag。需要粗糙匹配时使用 `--tag-match contains`，只要任一 tag 包含筛选值就会命中：
+
+```bash
+python3 scripts/dataset_cli.py query \
+  --target 行人 \
+  --tag-match contains \
+  --limit 20
+```
+
 导出筛选结果：
 
 ```bash
@@ -124,6 +133,23 @@ Dataset GUI: http://127.0.0.1:8766
 
 ## 组合筛选示例
 
+精准匹配可以按分隔后的独立 tag 判断。当前 CSV 简化存储时，可用分隔符边界模拟完整 tag 匹配：
+
+```sql
+SELECT *
+FROM frames
+WHERE weather = '雨天'
+  AND view_direction = '前'
+  AND (
+    target_tags = '行人'
+    OR target_tags LIKE '行人,%'
+    OR target_tags LIKE '%, 行人,%'
+    OR target_tags LIKE '%, 行人'
+  );
+```
+
+粗糙匹配使用包含逻辑：
+
 ```sql
 SELECT *
 FROM frames
@@ -131,3 +157,5 @@ WHERE weather = '雨天'
   AND view_direction = '前'
   AND target_tags LIKE '%行人%';
 ```
+
+如果把 tag 拆分为独立关系表，精准匹配应使用 `t.name = '行人'`，粗糙匹配可使用 `t.name LIKE '%行人%'`。
